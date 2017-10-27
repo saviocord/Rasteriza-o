@@ -1,0 +1,9 @@
+*.local
+*.identcache
+*.projdata
+*.tvsconfig
+*.dsk
+
+__history/
+__recovery/
+*.~*
