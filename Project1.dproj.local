@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<BorlandProject>
+	<Transactions>
+    <Transaction>2017/10/23 20:00:43.000.441,=C:\Users\sonyvaio\Documents\RAD Studio\Projects\Unit1.pas</Transaction>
+    <Transaction>2017/10/23 20:01:41.000.858,C:\Users\sonyvaio\Documents\SAVIO\ComputacaoGrafica\Unit1.dfm=C:\Users\sonyvaio\Documents\RAD Studio\Projects\Unit1.dfm</Transaction>
+    <Transaction>2017/10/23 20:01:41.000.858,C:\Users\sonyvaio\Documents\SAVIO\ComputacaoGrafica\Unit1.pas=C:\Users\sonyvaio\Documents\RAD Studio\Projects\Unit1.pas</Transaction>
+    <Transaction>2017/10/23 20:01:47.000.625,C:\Users\sonyvaio\Documents\SAVIO\ComputacaoGrafica\Project1.dproj=C:\Users\sonyvaio\Documents\RAD Studio\Projects\Project1.dproj</Transaction>
+  </Transactions>
+</BorlandProject>
