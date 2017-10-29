@@ -9,36 +9,34 @@ uses
 type
 
   TForm1 = class(TForm)
-    StringGrid1: TStringGrid;
-    Memo1: TMemo;
-    Panel1: TPanel;
-    Button2: TButton;
-    Clear: TButton;
-    Label1: TLabel;
-    ComboBox1: TComboBox;
-    procedure StringGrid1SelectCell(Sender: TObject; ACol, ARow: Integer;
+    SG_Grid: TStringGrid;
+    procedure SG_GridSelectCell(Sender: TObject; ACol, ARow: Integer;
       var CanSelect: Boolean);
-    procedure StringGrid1DrawCell(Sender: TObject; ACol, ARow: Integer;
+    procedure SG_GridDrawCell(Sender: TObject; ACol, ARow: Integer;
       Rect: TRect; State: TGridDrawState);
     procedure FormShow(Sender: TObject);
-    procedure Button2Click(Sender: TObject);
-    procedure ClearClick(Sender: TObject);
+    procedure B_LimparClick(Sender: TObject);
+    procedure CB_TipoChange(Sender: TObject);
+    procedure FormClose(Sender: TObject; var Action: TCloseAction);
   private
     { Private declarations }
     Matriz : array of array of Integer;
     pontoA, pontoB :TPoint;
 
-    function pointToClick(linha, coluna: integer): TPoint;
+    function pontoDoClick(linha, coluna: integer): TPoint;
+    procedure pintaLinha(pontoIni, pontoFim : TPoint);
     procedure preenchePontoAB(linha, coluna: integer);
+    procedure rasterizacaoReta;
+    procedure rasterizacaoCircunferencia;
+    procedure rasterizacaoElipse;
     procedure zeraMatriz;
     procedure limpaTudo;
   public
     { Public declarations }
+    v_tipo, v_tempo, v_raio, v_raio2, v_ajuste : integer;
+    v_tamanho_celula, v_tamanho_matriz : integer;
+    v_tamanho_linha : Double;
   end;
-
-const
-  TAMANHO_CELULA = 50;
-  TAMANHO_LINHA = 0.5;
 
 var
   Form1: TForm1;
@@ -54,13 +52,7 @@ begin
   ponto:=janela.ClientOrigin;
   ponto.x:=mouse.CursorPos.x-ponto.x - 5;
   ponto.y:=mouse.CursorPos.y-ponto.y - 5;
-    {
-  if (ponto.x<0) or (ponto.x>janela.Width) or (ponto.y<0) or (ponto.y>janela.Height) then
-   begin
-     ponto.y:=-1;
-     ponto.x:=-1;
-   end;
-   }
+
   result:=ponto;
 end;
 
@@ -80,7 +72,7 @@ begin
     result := 1;
 end;
 
-function Bresenham2(point1, point2 : Tpoint) : TList<TPoint> ;
+function Bresenham(point1, point2 : Tpoint) : TList<TPoint> ;
 var list : TList<TPoint> ;
     deltax, deltay, signalx, signaly : integer;
     x1, y1, x2, y2 : integer;
@@ -102,11 +94,6 @@ begin
 
   x := x1;
   y := y1;
-
-//  if (signalx < 0) then
-//    x := x -1;
-//  if (signaly < 0 ) then
-//    y := y -1;
 
   // trocar deltax com deltay dependendo da inclinacao da reta
   interchange := false;
@@ -150,10 +137,77 @@ begin
   result := list;
 end;
 
-procedure TForm1.StringGrid1DrawCell(Sender: TObject; ACol, ARow: Integer;
+function circleSimple(ponto: TPoint; raio : integer) : TList<Tpoint> ;
+var x, y, r2 : integer;
+    list : TList<TPoint> ;
+begin
+  list := TList<TPoint>.Create;
+  r2 := raio * raio;
+
+  x := -raio;
+  while x <= raio do
+  begin
+    y := Round( Sqrt(r2 - x*x ) );
+    list.Add(Point(ponto.X+x, ponto.Y+y));
+    list.Add(Point(ponto.X+x, ponto.Y-y));
+    inc(x);
+  end;
+  Result := list;
+end;
+
+function metodoPolinomialCirculo(ponto: TPoint; raio : integer) : TList<Tpoint> ;
+var x, y, xFim : integer;
+    r2, h, k : integer;
+    list : TList<TPoint> ;
+begin
+  list := TList<TPoint>.Create;
+
+  r2 := raio * raio;
+
+  xFim := Trunc( raio / Sqrt(2) );
+  x := 0;
+  h := ponto.X;
+  k := ponto.Y;
+  while x <= xFim do
+  begin
+    y := Round( Sqrt(r2 - x*x ) );
+    list.Add(Point(x+h, y+k)); list.Add(Point(-x+h, -y+k));
+    list.Add(Point(y+h, x+k)); list.Add(Point(-y+h, -x+k));
+    list.Add(Point(-y+h, x+k)); list.Add(Point(y+h, -x+k));
+    list.Add(Point(-x+h, y+k)); list.Add(Point(x+h, -y+k));
+
+    inc(x);
+  end;
+  Result := list;
+end;
+
+function metodoPolinomialElipse(ponto: TPoint; eixoMaior, eixoMenor : integer) : TList<Tpoint> ;
+var x, y, xFim : integer;
+    r2, h, k : integer;
+    list : TList<TPoint> ;
+begin
+  list := TList<TPoint>.Create;
+
+  xFim := eixoMaior;
+
+  x := 0;
+  h := ponto.X;
+  k := ponto.Y;
+  while x <= xFim do
+  begin
+
+    y := eixoMenor * Round( Sqrt(1- (( x*x) / (eixoMaior*eixoMaior)) ) );
+
+    list.Add(Point(x+h, y+k));  list.Add(Point(-x+h, -y+k));
+    list.Add(Point(-x+h, y+k));  list.Add(Point(x+h, -y+k));
+    inc(x);
+  end;
+  Result := list;
+end;
+
+procedure TForm1.SG_GridDrawCell(Sender: TObject; ACol, ARow: Integer;
   Rect: TRect; State: TGridDrawState);
 var i, j : Integer;
-    pt1, pt2 : tPoint;
 begin
   if Matriz[ARow,ACol] = 1 then
     TDBGrid(Sender).Canvas.Brush.Color := clBlack
@@ -162,28 +216,20 @@ begin
 
   TDBGrid(Sender).Canvas.FillRect(Rect);
 
-  if (pontoA.X <> -1) and (pontoB.X <> -1) then
+  if v_tipo = 0 then
   begin
-    with TControlCanvas.Create do
+    if (pontoA.X <> -1) and (pontoB.X <> -1) then
     begin
-      Control := StringGrid1;
-      Pen.Style := psSolid;
-      Pen.Color := clBlue;
-      Pen.Width := 2;
-      pt1 := pointToClick(pontoA.X, pontoA.Y);
-      MoveTo(pt1.X+2, pt1.Y+5);
-      pt2 := pointToClick(pontoB.X, pontoB.Y);
-      LineTo(pt2.X+2, pt2.Y+5);
+      pintaLinha(pontoA, pontoB);
     end;
   end;
 
 end;
 
-procedure TForm1.StringGrid1SelectCell(Sender: TObject; ACol, ARow: Integer;
+procedure TForm1.SG_GridSelectCell(Sender: TObject; ACol, ARow: Integer;
   var CanSelect: Boolean);
 begin
   preenchePontoAB(ARow, ACol);
-
   zeraMatriz;
 
   if pontoA.X <> -1 then
@@ -192,66 +238,89 @@ begin
   if pontoB.X <> -1 then
     Matriz[pontoB.X, pontoB.Y] := 1;
 
-  StringGrid1.Repaint;
+  SG_Grid.Repaint;
+
+  case v_tipo of
+    0:
+    begin
+      if (pontoA.X <> -1) and (pontoB.X <> -1) then
+        rasterizacaoReta;
+    end;
+    1:
+    begin
+      if (pontoA.X <> -1) then
+        rasterizacaoCircunferencia;
+    end;
+    2:
+    begin
+      if (pontoA.X <> -1) then
+        rasterizacaoElipse;
+    end;
+  end;
 
 end;
 
 procedure TForm1.zeraMatriz;
 var i, j : Integer;
 begin
-  for i := 0 to 9 do
+  for i := 0 to v_tamanho_matriz - 1 do
   begin
-    for j := 0 to 9 do
+    for j := 0 to v_tamanho_matriz - 1 do
     begin
       Matriz[i,j] := 0;
     end;
   end;
 end;
 
-procedure TForm1.Button2Click(Sender: TObject);
-var l : TList<TPoint>;
-    i : Integer;
-    ponto : TPoint;
-    linha, coluna : Integer;
-begin
-  l := Bresenham2(pontoA, pontoB);
-
-  Memo1.Lines.Add(' -------inicio-------') ;
-  i := 0;
-  while i < l.Count do
-  begin
-    ponto := l.Items[i];
-    if not ((ponto.X = pontoA.X) and (ponto.Y = pontoA.Y)) then
-    begin
-
-      Sleep(100);
-      Memo1.Lines.Add('X=' + IntToStr(ponto.X) + ' Y=' + IntToStr(ponto.Y) );
-      Matriz[ponto.X,ponto.Y] := 1;
-      StringGrid1.Repaint;
-    end;
-    Inc(i);
-  end;
-
-  StringGrid1.Repaint;
-end;
-
-procedure TForm1.ClearClick(Sender: TObject);
+procedure TForm1.B_LimparClick(Sender: TObject);
 begin
   limpaTudo;
-  StringGrid1.Repaint;
+  SG_Grid.Repaint;
+end;
+
+procedure TForm1.CB_TipoChange(Sender: TObject);
+begin
+  limpaTudo;
+end;
+
+procedure TForm1.FormClose(Sender: TObject; var Action: TCloseAction);
+begin
+  Action := caFree;
+  Form1 := nil;
 end;
 
 procedure TForm1.FormShow(Sender: TObject);
 begin
-  SetLength(Matriz,10,10);
+  SetLength(Matriz,v_tamanho_matriz,v_tamanho_matriz);
   limpaTudo;
+
+  SG_Grid.ColCount := v_tamanho_matriz;
+  SG_Grid.RowCount := v_tamanho_matriz;
+  SG_Grid.DefaultColWidth := v_tamanho_celula;
+  SG_Grid.DefaultRowHeight := v_tamanho_celula;
 end;
 
-function TForm1.pointToClick(linha, coluna: integer): TPoint;
+procedure TForm1.pintaLinha(pontoIni, pontoFim: TPoint);
+var pt1, pt2 : tPoint;
+begin
+  with TControlCanvas.Create do
+  begin
+    Control := SG_Grid;
+    Pen.Style := psSolid;
+    Pen.Color := clBlue;
+    Pen.Width := 2;
+    pt1 := pontoDoClick(pontoIni.X, pontoIni.Y);
+    MoveTo(pt1.X+v_ajuste, pt1.Y+v_ajuste);
+    pt2 := pontoDoClick(pontoFim.X, pontoFim.Y);
+    LineTo(pt2.X+v_ajuste, pt2.Y+v_ajuste);
+  end;
+end;
+
+function TForm1.pontoDoClick(linha, coluna: integer): TPoint;
 var pt : tPoint;
 begin
-  pt.x := (coluna * TAMANHO_CELULA) + (TAMANHO_CELULA div 2) + trunc(coluna * TAMANHO_LINHA ) -1;
-  pt.y := (linha * TAMANHO_CELULA) + (TAMANHO_CELULA div 2) + trunc(linha * TAMANHO_LINHA ) -1;
+  pt.x := (coluna * v_tamanho_celula) + (v_tamanho_celula div 2) + round((coluna * v_tamanho_linha ) -1);
+  pt.y := (linha * v_tamanho_celula) + (v_tamanho_celula div 2) + round((linha * v_tamanho_linha ) -1);
 
   result := pt;
 end;
@@ -259,7 +328,7 @@ end;
 procedure TForm1.limpaTudo;
 begin
   zeraMatriz;
-  Memo1.Clear;
+//  Memo1.Clear;
 
   pontoA.X := -1;
   pontoA.Y := -1;
@@ -276,21 +345,96 @@ begin
   if pontoA.X = -1 then
   begin
     pontoA := ponto;
-    Memo1.Lines.Add('pontoA.x='+IntToStr(pontoA.X)+' pontoA.y='+IntToStr(pontoA.Y));
+//    Memo1.Lines.Add('pontoA.x='+IntToStr(pontoA.X)+' pontoA.y='+IntToStr(pontoA.Y));
   end
-  else if pontoB.X = -1 then
+  else if (v_tipo = 0) and (pontoB.X = -1) then
   begin
     pontoB := ponto;
-    Memo1.Lines.Add('pontoB.x='+IntToStr(pontoB.X)+' pontoB.y='+IntToStr(pontoB.Y));
+//    Memo1.Lines.Add('pontoB.x='+IntToStr(pontoB.X)+' pontoB.y='+IntToStr(pontoB.Y));
   end
   else
   begin
     pontoA := ponto;
-    memo1.Lines.Add('');
-    Memo1.Lines.Add('pontoA.x='+IntToStr(pontoA.X)+' pontoA.y='+IntToStr(pontoA.Y));
+//    memo1.Lines.Add('');
+//    Memo1.Lines.Add('pontoA.x='+IntToStr(pontoA.X)+' pontoA.y='+IntToStr(pontoA.Y));
     pontoB.X := -1;
     pontoB.Y := -1;
   end;
+end;
+
+procedure TForm1.rasterizacaoCircunferencia;
+var l : TList<TPoint>;
+    i : Integer;
+    ponto : TPoint;
+    tempo : integer;
+begin
+  l := metodoPolinomialCirculo(pontoA, v_raio );
+
+//  Memo1.Lines.Add(' -------inicio-------') ;
+  i := 0;
+  while i < l.Count do
+  begin
+    ponto := l.Items[i];
+
+//    Memo1.Lines.Add('X=' + IntToStr(ponto.X) + ' Y=' + IntToStr(ponto.Y) );
+    Matriz[ponto.X,ponto.Y] := 1;
+    SG_Grid.Repaint;
+
+    Inc(i);
+  end;
+
+  SG_Grid.Repaint;
+
+end;
+
+procedure TForm1.rasterizacaoElipse;
+var l : TList<TPoint>;
+    i : Integer;
+    ponto : TPoint;
+    tempo : integer;
+begin
+  l := metodoPolinomialElipse(pontoA, v_raio, v_raio2 );
+
+//  Memo1.Lines.Add(' -------inicio-------') ;
+  i := 0;
+  while i < l.Count do
+  begin
+    ponto := l.Items[i];
+
+//    Memo1.Lines.Add('X=' + IntToStr(ponto.X) + ' Y=' + IntToStr(ponto.Y) );
+    Matriz[ponto.X,ponto.Y] := 1;
+    SG_Grid.Repaint;
+
+    Inc(i);
+  end;
+
+  SG_Grid.Repaint;
+
+end;
+
+procedure TForm1.rasterizacaoReta;
+var l : TList<TPoint>;
+    i : Integer;
+    ponto : TPoint;
+begin
+  l := Bresenham(pontoA, pontoB);
+
+//  Memo1.Lines.Add(' -------inicio-------') ;
+  i := 0;
+  while i < l.Count do
+  begin
+    ponto := l.Items[i];
+    if not ((ponto.X = pontoA.X) and (ponto.Y = pontoA.Y)) then
+    begin
+      Sleep(v_tempo);
+//      Memo1.Lines.Add('X=' + IntToStr(ponto.X) + ' Y=' + IntToStr(ponto.Y) );
+      Matriz[ponto.X,ponto.Y] := 1;
+      SG_Grid.Repaint;
+    end;
+    Inc(i);
+  end;
+
+  SG_Grid.Repaint;
 end;
 
 end.
